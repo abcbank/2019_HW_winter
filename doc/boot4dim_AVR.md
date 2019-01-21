@@ -72,7 +72,10 @@ int main(void){
 ```
 코드 설명
 Port F - 회로에서 LED를 키고 끄는것을 제어하는 역할
-DDRF[0:7] - F Port init
+DDRF[0:7] - F Port init.
+   - 만약 DDRF[4] = 1 일때, DDRF[4]는 output이라는 의미
+   - 만약 DDRF[4] = 0 일때, DDRF[4]는 input이라는 의미
+
 PORTF[0:7] - value of F Port
 LED 점등의 경우 상위 4bit, 즉 DDRF[0:3]과 PORTF[0:3]만 사용
 
@@ -251,4 +254,161 @@ Port A = FND_SEG[j]
 
 ### Day03
 학습 목표
-   1. 
+   1. Switch 실습
+   2. Interrupt를 활용해 타이머 제작
+
+#### 1. Switch 실습
+- AVR switch 회로
+  ![switch](../img/switch/switch01.png)
+  - 스위치의 input은 DIN[0:4], INT[4:5]에 해당한다.
+- AVR 메인 보드 회로
+  ![main](../img/board_main.png)
+  - DIN[0:4]는 PortG[0:4]의 input에 해당한다.
+- 결국, PortG[0:4]를 0으로 설정하여 특정 스위치의 input을 받아올 수 있다.
+######example
+```c
+#include <avr/io.h>
+#include <util/delay.h>
+
+int main()
+{
+   unsigned int i = 0;
+   DDRF = 0xF0;   //LED 네 개를 output으로 설정
+   DDRG = 0x00;   //DDRG[0] = 0, 즉 PinG 0를 input으로 설정
+   PORTF = 0x10;  //PortF[5] = 1, 즉 첫번째 LED를 on
+   
+   while(1)
+   {   if(i>3) {i = 0 ; PORTF = 0x10;} //한바퀴 돌면 초기화
+      
+      while(!(~PING & 0x01));    //버튼이 on할때까지 대기
+      _delay_ms(10); //10ms=확인 간격
+      PORTF = PORTF<<1; //PortF를 shift, 즉 다음 pin의 LED를 on
+
+      while(~PING & 0x01);  //버튼을 off할때까지 대기
+      _delay_ms(10);
+
+      i=i+1;
+   }
+
+   DDRB = 0x80;
+   DDRF = 0xF0;
+   PORTF = 0x10;
+   DDRG = 0x00;
+
+}
+```
+```c
+DDRG = 0x00;
+```
+- switch의 output은 Pin D의 input이 된다. 
+- SW5만 사용하므로 Pin D[0]를 0으로 설정(나머지는 X)
+```c
+DDRF = 0xF0;
+```
+- LED에 해당하는 Port F를 output으로 설정.
+```c
+PORTF = 0x10;
+```
+- 디폴트 값으로 첫번째 LED를 on
+```c
+      while(!(~PING & 0x01));    
+      _delay_ms(10); 
+      PORTF = PORTF<<1; 
+```
+- SW5가 눌리면 10ms 후  Port F를 1만큼 shift
+```c
+      while(~PING & 0x01);  //버튼을 off할때까지 대기
+      _delay_ms(10);
+      i=i+1;
+```
+- 눌렀던 SW5를 때면 10ms 후 i값 증가
+
+##### Trouble Shooting
+
+#### 2. Interrupt를 활용해 타이머 제작
+- Interrupt
+  - 외부의 요구에 의해서 현재 실행 중인 프로그램을 잠시 중단하고 보다 시급한 작업을 먼저 수행한 후 다시 실행중이던 프로그램을 복귀하는 것.
+  - 외부에서 신호를 준다는 점에서 polling과 다름
+  - ATmega128 board에선 INT4, INT5가 interrupt로 작동 가능하다.
+
+- Polling
+  - 특정 주기마다 작업을 중단하며 외부의 요구 사항을 확인하는 것.
+  - 내부에서 외부의 요구를 확인한다는 점에서 interrupt와 다름
+
+######example01
+```c
+#include<avr/io.h>
+#include<avr/interrupt.h>
+
+void init_port(void) //초기화 
+{
+   DDRF = 0xF0;
+   PORTF = 0x00; //input
+   DDRE = 0x00;
+   PORTE = 0xFF;
+}
+
+void init_interrupt(void)
+{
+   EIMSK = 0x00;
+   EICRA = 0x00; 
+   EICRB = 0x08;
+   EIMSK = 0x20;
+   EIFR = 0xFF;
+}
+
+int main(void)
+{
+   init_port();
+   init_interrupt();
+   sei();
+   while(1)
+   {
+   }
+   return 0;
+}
+
+ISR(INT5_vect)
+{
+   PORTF = ~PORTF;
+}
+```
+- INT4 = 1이 되면 interrupt가 발생해 Port F의 값들이 반전된다.
+
+
+```c
+void init_port(void) //초기화 
+{
+   DDRF = 0xF0;
+   PORTF = 0x00; //input
+   DDRE = 0x00;
+   PORTE = 0xFF;
+}
+```
+- DDRF : LED부분을 output을 사용
+- Port F : 처음엔 전부 off 상태
+- DDRE : INT5의 output은 Pin E[5]의 input이 된다. 따라서 DDRE[5] = 0으로 설정
+- Port E : Port E[5] = 1일때 interrupt 발생? Port E를 0XFF로 설정하면 초기 한번 발생하고 시작하지 않나?
+
+```c
+void init_interrupt(void)
+{
+   EIMSK = 0x00;
+   EICRA = 0x00; 
+   EICRB = 0x08;
+   EIMSK = 0x20;
+   EIFR = 0xFF;
+}
+```
+- EIMSK(External Interrupt Mask Register) 
+  -  어떤 입력을 Interupt로 사용할지 결정.
+- EICRx(External Interrupt Control Register)
+  -  어떤 입력에 반응할지 결정. 스위치가 눌리는 순간 interrupt를 작동할지, 아니면 스위치가 눌렸다 다시 올라가는 순간 interrupt를 작동할지 결정해줌.
+  -  https://blog.naver.com/dhfl1849/220828498160
+- EIRF(External Interrupt Flag Register)
+  - 어떤 interrupt가 트리거가 되었는가를 표시함.
+  - 해당 interrupt service routine으로 jump하면 0으로 설정
+
+#####Trouble Shooting
+[AVR] 코드와는 달리 INT4를 누를때 interrupt 발생한다.
+- Schematic과 비교해보면, 저항 R27과 INT5가 연결되어 있다. 보드에는 INT4와 R27과 연결되어있음
