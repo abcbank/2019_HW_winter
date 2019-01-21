@@ -13,9 +13,10 @@
 ## 개발 환경 설정
    -Software 
       -AVR Studio 4
-   1. 해당 [영상](https://www.youtube.com/watch?v=4LK3vprsKRM)을 따라 설치.
+
+     1. 해당 [영상](https://www.youtube.com/watch?v=4LK3vprsKRM)을 따라 설치.
          조영범 교수님께서 제공해주신 AVR Studio 4 사용. 상위버전은 설정도 복잡하고 오류날 가능성도 높기 때문에 사용을 지양할 것.
-   2. msys-1.0-vista64라는 파일 압축 해제 및 C:\WinAVR-20100110\utils\bin 에 붙여넣기.
+     2. msys-1.0-vista64라는 파일 압축 해제 및 C:\WinAVR-20100110\utils\bin 에 붙여넣기.
    - Hardware
       - AVR Board
 
@@ -265,7 +266,7 @@ Port A = FND_SEG[j]
   ![main](../img/board_main.png)
   - DIN[0:4]는 PortG[0:4]의 input에 해당한다.
 - 결국, PortG[0:4]를 0으로 설정하여 특정 스위치의 input을 받아올 수 있다.
-######example
+###### example
 ```c
 #include <avr/io.h>
 #include <util/delay.h>
@@ -301,7 +302,7 @@ int main()
 DDRG = 0x00;
 ```
 - switch의 output은 Pin D의 input이 된다. 
-- SW5만 사용하므로 Pin D[0]를 0으로 설정(나머지는 X)
+- Sw5만 사용하므로 Pin D[0]를 0으로 설정(나머지는 X)
 ```c
 DDRF = 0xF0;
 ```
@@ -321,21 +322,55 @@ PORTF = 0x10;
       _delay_ms(10);
       i=i+1;
 ```
-- 눌렀던 SW5를 때면 10ms 후 i값 증가
+- 눌렀던 Sw5를 때면 10ms 후 i값 증가
 
 ##### Trouble Shooting
 
 #### 2. Interrupt를 활용해 타이머 제작
 - Interrupt
-  - 외부의 요구에 의해서 현재 실행 중인 프로그램을 잠시 중단하고 보다 시급한 작업을 먼저 수행한 후 다시 실행중이던 프로그램을 복귀하는 것.
-  - 외부에서 신호를 준다는 점에서 polling과 다름
-  - ATmega128 board에선 INT4, INT5가 interrupt로 작동 가능하다.
+    - 내부 혹은 외부의 요구에 의해서 현재 실행 중인 프로그램을 잠시 중단하고 보다 시급한 작업을 먼저 수행한 후 다시 실행중이던 프로그램을 복귀하는 것.
+      - 내부 인터럽트 : AVR의 내부적인 요인에 의해 발생하는 인터럽트
+        - 타이머/카운터, ADC, USART
+      - 외부 인터럽트 : 외부의 전기적인 자극에 의해 발생하는 인터럽xm
+    - ATmega128 board에선 INT4, INT5가 interrupt로 작동 가능하다.
+    - Interrupt Service Routine(ISR, 인터럽트 처리 루틴)
+      - 인터럽트 발생시 수행되는 작업
+  - Interrupt Vector
+    - 각 인터럽트에 부여되는 고유한 번호를 의미함.
+    - Interrupt Vector Table : 각각 인터럽트에 대한 ISR로 점프하는 어셈블리 명령어가 저장되어있음.
+    - Interrupt 발생 순서
+      ![Interrupt Flow Chart](http://blogfiles.naver.net/20130124_122/winipe_1358990739814AtL5P_PNG/%C0%CE%C5%CD%B7%B4%C6%AE.png)
+      - Interrupt 발생
+      - Interrupt에 할당된 Interrupt Vector에 따라 Interrupt Vector Table 확인 
+      - Interrupt Vector Table에 저장된 해당 ISR로 점프
+      - ISR 실행
+      - 복귀
+
+  - EIMSK[0:7](External Interrupt Mask Register) 
+    -  어떤 입력을 Interupt로 사용할지 결정.
+      - 1 : 사용
+      - 0 : 비사용
+  - EICRx[0:7](External Interrupt Control Register)
+    -  어떤 입력에 반응할지 결정. 스위치가 눌리는 순간 interrupt를 작동할지, 아니면 스위치가 눌렸다 다시 올라가는 순간 interrupt를 작동할지 결정해줌.
+    -  EICRA : INT 0~3까지에 대한 감지 방법 제어. 각 interrupt마다 2bit씩 할당된다.
+    -  EICRB : INT 4~7까지에 대한 감지 방법 제어. 각 interrupt마다 2bit씩 할당된다.
+     | ISCn1 | ISCn0 | Description |
+       | - | - | - |
+     | 0 | 0 | input이 GND상태(Low)로 유지될 경우 발생 |
+     |0|1|위치가 변경할때마다 발생|
+     |1|0|Falling edge(High>>Low)|
+     |1|1|Rising edge(Low>>High)|
+
+  - EIRF[0:7](External Interrupt Flag Register)
+    - 어떤 interrupt가 트리거가 되었는가를 표시함.
+    - 해당 interrupt service routine으로 jump하면 0으로 설정.
+
 
 - Polling
   - 특정 주기마다 작업을 중단하며 외부의 요구 사항을 확인하는 것.
   - 내부에서 외부의 요구를 확인한다는 점에서 interrupt와 다름
 
-######example01
+###### example01
 ```c
 #include<avr/io.h>
 #include<avr/interrupt.h>
@@ -400,15 +435,101 @@ void init_interrupt(void)
    EIFR = 0xFF;
 }
 ```
-- EIMSK(External Interrupt Mask Register) 
-  -  어떤 입력을 Interupt로 사용할지 결정.
-- EICRx(External Interrupt Control Register)
-  -  어떤 입력에 반응할지 결정. 스위치가 눌리는 순간 interrupt를 작동할지, 아니면 스위치가 눌렸다 다시 올라가는 순간 interrupt를 작동할지 결정해줌.
-  -  https://blog.naver.com/dhfl1849/220828498160
-- EIRF(External Interrupt Flag Register)
-  - 어떤 interrupt가 트리거가 되었는가를 표시함.
-  - 해당 interrupt service routine으로 jump하면 0으로 설정
+- EIMSK = 0x00 : 모든 인터럽트 사용 안한다고 초기화
+- EICRA = 0x00 : INT 0~3을 00으로, 즉 input이 GND로 유지될때 interrupt 발생하도록 설정
+- EICRB = 0x08 : 세번째 비트를 1으로 설정. ISC5 = [0, 1]이 된다. 따라서 INT 5는 모든 위치 변경에 Interrupt 발생
+- EIMSK = 0x20 : 여섯번째 비트를 1로 설정. 따라서 INT 5를 활성화한다.
+- EIFR = 0xFF : 초기 모든 인터럽트를 활성화(?)
 
-#####Trouble Shooting
+```c
+ISR(INT5_vect)
+{
+   PORTF = ~PORTF;
+}
+```
+INT5_vext : 
+PORTF = ~PORTF : LED 상태를 반전
+
+###### example 02
+```c
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+void init_port(void)
+{
+	DDRF = 0xF0;
+	PORTF = 0x00;
+	DDRE = 0x00;
+	PORTE = 0xFF;
+}
+
+void init_interrupt(void)
+{
+	EIMSK = 0x00; // When changing ISCn1/ISCn0 bits, the interrupt must be disabled by clearing its Interrupt Enable bit
+					// in the EIMSK Register.
+					// Otherwise an interrupt can occur when the bits are changed.
+	EICRA = 0x00;
+	EICRB = 0x08;
+	EIMSK = 0x20;
+	EIFR = 0xFF;
+}
+
+int main(void)
+{
+	init_port();
+	init_interrupt();
+	sei();
+	
+unsigned int i = 0;
+   DDRF = 0xF0;
+   DDRG = 0x00;
+   PORTF = 0x10;
+   
+   while(1)
+   {   if(i>3) {i = 0 ; PORTF = 0x10;};
+      while(!(~PING & 0x01)) ;
+      _delay_ms(10);
+      
+      
+      PORTF = PORTF<<1;
+      
+      while(~PING & 0x01) ;
+      _delay_ms(10);
+      i=i+1;
+   }
+	return 0;
+
+}
+	ISR(INT5_vect)
+
+{
+	PORTF = ~PORTF;
+}
+
+```
+
+##### 토의 사항
+- exapmle 01
+   - EIFR과 Port E는 완전히 다른 비트에 해당되는가? Port E의 output이 INT의 input으로 들어가고, 이를 통해 EIFR의 원소가 결정된다.
+  
+   - EIFR와 Port E를 1로 설정해두면 초기 인터럽트가 미리 한번 실행되지 않을까?
+     - Switch에는 Pull up과 Pull down 두가지 방식이 있다. 
+  ![Pull Up Switch](https://i.stack.imgur.com/mg5fz.png)
+      - Pull up switch : 버튼 눌리면 High에서 Low로 변함(default : High)
+      - Pull down switch : 버튼 눌리면 Low에서 Hgit로 변함(default : Low)
+##### Trouble Shooting
+```c
+ISR(INT5_vect)
+{
+   PORTF = ~PORTF;
+}
+```
 [AVR] 코드와는 달리 INT4를 누를때 interrupt 발생한다.
-- Schematic과 비교해보면, 저항 R27과 INT5가 연결되어 있다. 보드에는 INT4와 R27과 연결되어있음
+- Schematic과 비교해보면, 저항 R27과 INT5가 연결되어 있다. 즉, Board의 INT4가 Schematic의 INT5와 같다.
+
+### Day04
+학습 목표
+1. USART 실습
+
+#### USART 실습
