@@ -127,6 +127,8 @@ Set Input HEX File as coded file, press Program
 
 - 몇몇 보드는 AVR Studio에서 액세스 자체를 할 수 없다. 해당 현상의 원인은 무엇인가?
   - fuse bit을 임의로 바꾼 몇몇 보드들이 임의로 바꾼 환경과 보드의 환경이 서로 어긋나면서 보드 자체가 액세스를 거부하는 것으로 추정된다.
+- while 문 이후에 있는 코드의 의미는?
+  - 사실상 의미 없음. 이번 학기에 수정 예정.
 
 
 #### 제작 아이디어 토의
@@ -298,6 +300,7 @@ int main()
 
 }
 ```
+###### 코드 해석
 ```c
 DDRG = 0x00;
 ```
@@ -369,6 +372,8 @@ PORTF = 0x10;
 - Polling
   - 특정 주기마다 작업을 중단하며 외부의 요구 사항을 확인하는 것.
   - 내부에서 외부의 요구를 확인한다는 점에서 interrupt와 다름
+  - 인터럽트보다 약간 빠름!
+  - 그렇다고 인터럽트가 많이 빠른것도 아님. 잉여 시간이 많이 아깝다.
 
 ###### example01
 ```c
@@ -389,7 +394,7 @@ void init_interrupt(void)
    EICRA = 0x00; 
    EICRB = 0x08;
    EIMSK = 0x20;
-   EIFR = 0xFF;
+   EIFR = 0xFF;   //원래 초반에 초기화 시켜주는 의미
 }
 
 int main(void)
@@ -409,7 +414,7 @@ ISR(INT5_vect)
 }
 ```
 - INT4 = 1이 되면 interrupt가 발생해 Port F의 값들이 반전된다.
-
+###### 코드 해석
 
 ```c
 void init_port(void) //초기화 
@@ -423,9 +428,8 @@ void init_port(void) //초기화
 - DDRF : LED부분을 output을 사용
 - Port F : 처음엔 전부 off 상태
 - DDRE : INT5의 output은 Pin E[5]의 input이 된다. 따라서 DDRE[5] = 0으로 설정
-- Port E : Port E[5] = 1일때 interrupt 발생? Port E를 0XFF로 설정하면 초기 한번 발생하고 시작하지 않나?
-
 ```c
+- Port E : Port E[5] = 1로 설정(Pull up switch)
 void init_interrupt(void)
 {
    EIMSK = 0x00;
@@ -451,12 +455,14 @@ INT5_vext :
 PORTF = ~PORTF : LED 상태를 반전
 
 ###### example 02
+
+- 해석해보자!
 ```c
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-void init_port(void)
+void init_port(void) //초기화
 {
 	DDRF = 0xF0;
 	PORTF = 0x00;
@@ -464,7 +470,7 @@ void init_port(void)
 	PORTE = 0xFF;
 }
 
-void init_interrupt(void)
+void init_interrupt(void)  //인터럽트 초기화
 {
 	EIMSK = 0x00; // When changing ISCn1/ISCn0 bits, the interrupt must be disabled by clearing its Interrupt Enable bit
 					// in the EIMSK Register.
@@ -509,6 +515,7 @@ unsigned int i = 0;
 
 ```
 
+
 ##### 토의 사항
 - exapmle 01
    - EIFR과 Port E는 완전히 다른 비트에 해당되는가? Port E의 output이 INT의 input으로 들어가고, 이를 통해 EIFR의 원소가 결정된다.
@@ -530,6 +537,99 @@ ISR(INT5_vect)
 
 ### Day04
 학습 목표
-1. USART 실습
+1. 질문
 
-#### USART 실습
+#### 질문
+ 조교님 이메일 - d7000@konkuk.ac.kr
+ - 초기에 flag register을 0xFF로 초기화화는 이유
+  >flag register을 1로 설정해주면 해당 flag는 0으로 초기화된다. 임의로 초기화는 불가능하며 순간적으로 인터럽트가 X상태인걸 방지하기 위해 해주는 작업이다.
+
+- polling과 sampling 
+>edge를 감지를 한다 -> sampling 을 감지. -> sampling을 어떻게 해주느냐에 대한 차이!
+sleep모드 사용시 일정 clock를 정지.(전원 아끼기용) -> I/O 클럭 일부가 죽음-> 어떤 애들은 제대로 작동 불가능
+
+- sampling vs polling?
+> sampling : 언제 신호의 변경이 감지됬다고 하드웨어에서 감지
+ polling : 언제 신호가 변경됬다고 소프트웨어에서 감지
+ interrupt : sampling 기반 
+ try catch : 에러 처리에 대한 것, 인터럽트가 아니다.
+ c에서 event listener : OS쪽에 등록된 세팅. 인터럽트와는 다르다.
+
+- interrupt 사이의 우선도? 
+>INT 0~7까지 순서대로 실행
+ reset : 최우선적인 하드웨어적인 인터럽트. INT 0번보다 먼저 실행된다.
+
+- interrupt가 실행되는 방식?
+>하드웨어에 대한 인터럽트는 그냥 PC가 넘어가는 식으로 실행된다. 이때, jal에서 링크에 대한 명령어는 ISR쪽에서 수행한다.
+
+- delay 함수에 변수를 넣으면 안되는 이유?
+>delay 함수 : no operation에 의해 구현이 됨 -> 컴파일러가 변수로 넣으면 안된다고 경고를 해주는 것-> 컴파일러에 따라 다르다. 
+
+-  switch의 민감도를 조정하는 방법
+> chattering이라는 방법이 있음. 기간을 길게 주면 동작에 대한 고려를 해야됨. switch의 물리적인 특성에 따라 시간을 다르게 보정해야된다.
+
+-  공학은 어떤 학문인가
+> 디지털 시스템을 구현하는게 핵심이다. -> 자신이 원하는 알고리즘을 하드웨어로 구현할 줄 알아야됨. -> 자신이 원하는 chip을 만들어서 실제로 구현이 되나 구현 -> 실제로 그게 구현이 되면 졸업 가능.(or 논문) -> 디지털 칩 시스템과 인베디드 시스템이 핵심 유형임 -> 8대 공정 
+
+-  베릴로그란 무엇인가?
+> 하드웨어 자체를 설계하는 언어 -> 메인 메모리, capaciter 등등
+
+-  HDL?
+>하드웨어를 설계 가능 -> 수동소자 자체를 설계를 하는건 힘들다.-> 하드웨어를 말로써 풀어서 말할 수 있는게 HDL언어라 보면 됨.
+베릴로그 HDL은 실제와 거의 비슷함. -> 어느정도 배열 시스템지원
+
+- flip flap vs latch?
+> clock의 기반이 되는 flipflap이 훨씬 중요
+
+- FPGA?
+> 병행 기능을 본인이 직접 짜야함.
+
+- [idec.or.kr](https://idec.co.kr) : 베릴로그(HDL) 무료 강좌 있음. 원하면 회원가입해서 들어볼 것
+
+- HDL vs VHDL? 
+> 하드웨어를 작성할떄 사용하는 HDL 중 VHDL이 있음
+
+- FPGA(feild programalbe build array) - 리눅스 올리는게 힘들다. -> 정확히 말하면 게이트들을 잘 연결해주는게 FPGA
+
+- DE1보드의 경우 arm 코어가 옆에 하나 있음. 거기에 보통 FPGA를 올림.
+
+- 디지털 설계 방향 = 실험+응논(김창범 교수님) + 마프(박성정 교수님) + 컴구(박성정 2학년 2학기)(+물성+임베디드 자료구조(?)+알응(?) + C++(객체 지향) + 제어 공학(굳이 추천 안함.))
+
+- 아날로그 - 전자기학 2
+
+- 디지털 설계와 반도체는? 반도체도 상당히 갈래가 많음. 반도체 물성? 반도체 설계? 아날로그 반도체? 등등
+
+- 사실상 아날로그 물성 반도체를 포괄해서 반도체라고 한다. 진심으로 그쪽으로 나갈가면 반도체 관련 과목을 들어보자.
+
+- 인베디드는 완전히 반조체 과목은 아님.
+
+- FPGA - 병렬 처리에 특화가 되있음. 똑같은걸 수십개 동시에 돌리기 가능.
+
+- FPGA에 멀티 쓰레드는 사실상 효율이 낮은 작업. 하드웨어 논리 게이트의 속도가 너무 느림.
+
+- FPGA는 보통 Cloud를 못따라간다. 해당 작업을 연계하기 위해선 상당히 비싼 FPGA보드를 사야한다.
+
+- AVR - 16MH -> free scaler 예제를 참고할것.
+
+- 전자회로 2 - 라플라스 변환 공부해둘것.
+
+- time interrupt+ 7segment -> 한바퀴 돌기-> 하나씩 쌓여서 네모 모양 만든 후 다시 네모 모양 하나씩 사라지게 하기
+
+- timer - interrupt로 clock, 즉 시간이 지나가는것을 interrupt로 수행
+
+- 라인 트레이서 - 하드웨어와 소프트웨어 모두 잡아야됨! -> 센서를 직접 제작 
+
+### Day08
+학습 목표
+1. 타이머 구현
+
+#### 1. 타이머 구현
+```c
+PORTN |= 0x01  //Set bit 0 only
+PORTN &= ~0x01 //Clear bit 0 only
+PORTN ^= 0x01  //Toggle bit 0 only
+PORTN & 0x01   //Test bit 0 only
+PORTN = 0x80   //Set bit 7 only
+
+```
+
